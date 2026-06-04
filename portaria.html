@@ -1,24 +1,313 @@
-// ==================== ROTEADOR ATUALIZADO ====================
-function doGet(e) {
-  var page = (e && e.parameter.page) ? e.parameter.page : 'formulario';
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Portaria - Controle por Veículo</title>
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #1a202c;
+      color: white;
+      margin: 0;
+      padding: 15px;
+      text-align: center;
+    }
+    .container {
+      max-width: 500px;
+      margin: 20px auto;
+      background: #2d3748;
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    h2 {
+      margin-top: 0;
+      color: #63b3ed;
+      border-bottom: 1px solid #4a5568;
+      padding-bottom: 10px;
+    }
+    #preview {
+      width: 100%;
+      max-width: 320px;
+      min-height: 240px;
+      background: #000;
+      border-radius: 12px;
+      margin: 0 auto;
+      border: 3px solid #63b3ed;
+      overflow: hidden;
+    }
+    .status-alerta {
+      font-weight: bold;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+      display: none;
+    }
+    .liberado { background: #2f855a; }
+    .bloqueado { background: #9b2c2c; }
+    .alerta { background: #975a16; }
+    .aviso-especial {
+      background: #f39c12;
+      color: #000;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+      display: none;
+      font-weight: bold;
+      border: 2px solid #ffdd87;
+    }
+    .dados-box {
+      display: none;
+      background: #1f2937;
+      margin-top: 15px;
+      padding: 18px;
+      border-radius: 12px;
+      text-align: left;
+    }
+    .dados-box p { margin: 8px 0; }
+    .dados-box strong { color: #90cdf4; }
+    #btnLiberar {
+      width: 100%;
+      background: #2f855a;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 15px;
+      color: white;
+    }
+    #btnLiberar:hover { background: #276749; }
+    #btnLiberar:disabled { background: #718096; cursor: not-allowed; }
+    .small-note { font-size: 12px; color: #a0aec0; margin-top: 10px; }
+    button#reiniciarCameraBtn {
+      background: #4a5568;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-top: 10px;
+      cursor: pointer;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loginScreen" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#1a202c; display:flex; justify-content:center; align-items:center; z-index:1000;">
+  <div class="container" style="background:white; color:#333;">
+    <h3 style="color:#1a365d;">🔐 Acesso à Portaria</h3>
+    <input type="password" id="inputSenha" placeholder="Digite a senha" style="width:100%; padding:10px; margin-bottom:10px; border-radius:8px; border:1px solid #ccc;">
+    <button onclick="verificarSenha()" style="background:#2f855a; color:white; padding:12px; width:100%; border:none; border-radius:8px; font-weight:bold;">Entrar</button>
+  </div>
+</div>
+
+<div class="container" id="conteudoPortaria" style="display:none;">
+  <h2>🚗 PORTARIA - CONTROLE POR VEÍCULO</h2>
+  <div id="preview"></div>
+  <div class="small-note">Aponte para o QR Code do veículo</div>
+  <div class="status-alerta" id="boxAlerta"></div>
+  <div class="aviso-especial" id="avisoEspecial">
+    ♿ ATENÇÃO: Veículo com ocupante de mobilidade reduzida.<br>Encaminhe para acesso prioritário.
+  </div>
+  <div class="dados-box" id="dadosVeiculo">
+    <p><strong>🔢 PLACA:</strong> <span id="dPlaca"></span></p>
+    <p><strong>👤 MOTORISTA:</strong> <span id="dMotorista"></span></p>
+    <p><strong>👥 PASSAGEIROS:</strong> <span id="dPassageiros"></span></p>
+    <p><strong>👨‍👩‍👧 TOTAL OCUPANTES:</strong> <span id="dTotal"></span></p>
+    <p><strong>🎓 FORMANDO:</strong> <span id="dAluno"></span></p>
+    <button id="btnLiberar">✅ LIBERAR VEÍCULO E OCUPANTES</button>
+  </div>
+  <button id="reiniciarCameraBtn" style="display: none;">🔄 Reiniciar câmera</button>
+</div>
+
+<script>
+  // URL do seu Google Apps Script já atualizada
+  const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwNqxPJK4EBpV9VcrP19liqp-btJQzBF-lFMTkKU1SWAgClhS1EaCKCdQoTolfVTx9Q/exec";
   
-  // Se tentarem acessar a portaria pelo link do Google, joga para o GitHub Pages (Seguro para Câmera)
-  if (page === 'portaria') {
-    var urlGitHubPortaria = "https://SEU-USUARIO.github.io/SEU-REPOSITORIO/portaria.html"; 
+  let html5QrcodeScanner = null;
+  let ultimoIdLido = "";
+  const qrConfig = { fps: 5, qrbox: { width: 250, height: 250 } };
+
+  function verificarSenha() {
+    const senha = document.getElementById("inputSenha").value;
+    if (senha === "ciaan1955") {
+      document.getElementById("loginScreen").style.display = "none";
+      document.getElementById("conteudoPortaria").style.display = "block";
+      setTimeout(() => iniciarCamera(), 200);
+    } else {
+      alert("Senha incorreta!");
+      document.getElementById("inputSenha").value = "";
+    }
+  }
+
+  function iniciarCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      exibirAlerta("❌ Navegador não suporta câmera.", "bloqueado");
+      return;
+    }
     
-    return HtmlService.createHtmlOutput(
-      "<script>window.top.location.href='" + urlGitHubPortaria + "';</script>"
-    );
+    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) return;
+
+    const preview = document.getElementById("preview");
+    if (!preview) return;
+    preview.innerHTML = "";
+    html5QrcodeScanner = new Html5Qrcode("preview");
+
+    html5QrcodeScanner.start(
+      { facingMode: "environment" },
+      qrConfig,
+      onScanSuccess
+    ).then(() => {
+      console.log("✅ Câmera ativa");
+      exibirAlerta("📷 Câmera ativa. Aponte para o QR Code.", "liberado");
+      setTimeout(() => {
+        const box = document.getElementById("boxAlerta");
+        if (box && box.innerText.includes("Câmera ativa")) box.style.display = "none";
+      }, 3000);
+      document.getElementById("reiniciarCameraBtn").style.display = "inline-block";
+    }).catch(err => {
+      console.warn("Erro câmera traseira, tentando fallback:", err);
+      Html5Qrcode.getCameras().then(cameras => {
+        if (cameras && cameras.length > 0) {
+          const cameraId = cameras.length > 1 ? cameras[cameras.length-1].id : cameras[0].id;
+          return html5QrcodeScanner.start(cameraId, qrConfig, onScanSuccess);
+        } else throw new Error("Nenhuma câmera");
+      }).then(() => {
+        exibirAlerta("📷 Câmera ativa (modo alternativo)", "liberado");
+        document.getElementById("reiniciarCameraBtn").style.display = "inline-block";
+      }).catch(fbErr => {
+        exibirAlerta("❌ Não foi possível acessar a câmera. Verifique permissões.", "bloqueado");
+        document.getElementById("reiniciarCameraBtn").style.display = "inline-block";
+      });
+    });
   }
-  
-  if (page === 'gerente') {
-    return HtmlService.createTemplateFromFile('GerenteVeiculo').evaluate()
-        .setTitle('Painel Gerente')
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+
+  function reiniciarCamera() {
+    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+      html5QrcodeScanner.stop().then(() => iniciarCamera()).catch(() => iniciarCamera());
+    } else {
+      iniciarCamera();
+    }
   }
-  
-  // Padrão: Tela de cadastro de visitantes
-  return HtmlService.createTemplateFromFile('FormularioVeiculo').evaluate()
-      .setTitle('Cadastro de Veículo')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
+
+  function onScanSuccess(decodedText) {
+    if (decodedText && decodedText !== ultimoIdLido) {
+      ultimoIdLido = decodedText;
+      processarLeitura(decodedText);
+    }
+  }
+
+  function processarLeitura(id) {
+    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) html5QrcodeScanner.pause(true);
+    if (navigator.vibrate) navigator.vibrate(200);
+
+    document.getElementById("boxAlerta").style.display = "none";
+    document.getElementById("dadosVeiculo").style.display = "none";
+    document.getElementById("avisoEspecial").style.display = "none";
+
+    fetch(GOOGLE_WEB_APP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ acao: "consultar", idVeiculo: id })
+    })
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
+    .then(res => {
+      if (!res.sucesso) {
+        exibirAlerta(res.msg || "❌ QR Code inválido", "bloqueado");
+        liberarScanner();
+        return;
+      }
+
+      document.getElementById("dPlaca").innerText = res.placa || "---";
+      document.getElementById("dMotorista").innerText = res.motorista || "---";
+      const passageirosHtml = (res.passageiros || "Nenhum").replace(/;/g, "<br>");
+      document.getElementById("dPassageiros").innerHTML = passageirosHtml;
+      document.getElementById("dTotal").innerText = res.totalOcupantes || "1";
+      document.getElementById("dAluno").innerText = res.aluno || "---";
+      document.getElementById("dadosVeiculo").style.display = "block";
+
+      if (res.necessidadeEspecial === "SIM") {
+        document.getElementById("avisoEspecial").style.display = "block";
+      }
+
+      const btn = document.getElementById("btnLiberar");
+      if (res.status !== "NÃO ENTROU") {
+        exibirAlerta("⚠️ Este veículo já registrou entrada!", "bloqueado");
+        btn.style.display = "none";
+        liberarScanner();
+        return;
+      }
+
+      exibirAlerta("✓ Veículo apto para entrada", "liberado");
+      btn.style.display = "block";
+      btn.disabled = false;
+      btn.innerText = "✅ LIBERAR VEÍCULO E OCUPANTES";
+
+      btn.onclick = async () => {
+        btn.disabled = true;
+        btn.innerText = "⏳ PROCESSANDO...";
+        try {
+          const response = await fetch(GOOGLE_WEB_APP_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ acao: "liberar", idVeiculo: id, responsavel: "Portaria - Scanner" })
+          });
+          const retorno = await response.json();
+          if (retorno.sucesso) {
+            exibirAlerta("✓ ACESSO LIBERADO PARA TODOS OS OCUPANTES", "liberado");
+          } else {
+            exibirAlerta(retorno.msg || "Erro ao liberar", "bloqueado");
+          }
+        } catch (e) {
+          exibirAlerta("Erro de conexão com o servidor", "bloqueado");
+        }
+        setTimeout(() => {
+          document.getElementById("dadosVeiculo").style.display = "none";
+          document.getElementById("avisoEspecial").style.display = "none";
+          liberarScanner();
+        }, 3000);
+      };
+    })
+    .catch(err => {
+      console.error(err);
+      exibirAlerta("Erro de comunicação com o servidor. Verifique a URL do Web App.", "bloqueado");
+      liberarScanner();
+    });
+  }
+
+  function exibirAlerta(msg, tipo) {
+    const box = document.getElementById("boxAlerta");
+    box.innerHTML = msg;
+    box.className = "status-alerta " + tipo;
+    box.style.display = "block";
+  }
+
+  function liberarScanner() {
+    setTimeout(() => {
+      document.getElementById("boxAlerta").style.display = "none";
+      if (html5QrcodeScanner && !html5QrcodeScanner.isScanning) {
+        html5QrcodeScanner.resume();
+      }
+      ultimoIdLido = "";
+    }, 4000);
+  }
+
+  document.getElementById("reiniciarCameraBtn").addEventListener("click", () => {
+    reiniciarCamera();
+    exibirAlerta("🔄 Reiniciando câmera...", "alerta");
+    setTimeout(() => {
+      if (document.getElementById("boxAlerta").innerText === "🔄 Reiniciando câmera...")
+        document.getElementById("boxAlerta").style.display = "none";
+    }, 2000);
+  });
+</script>
+</body>
+</html>
