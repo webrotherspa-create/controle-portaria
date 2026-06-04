@@ -1,0 +1,24 @@
+// ==================== ROTEADOR ATUALIZADO ====================
+function doGet(e) {
+  var page = (e && e.parameter.page) ? e.parameter.page : 'formulario';
+  
+  // Se tentarem acessar a portaria pelo link do Google, joga para o GitHub Pages (Seguro para Câmera)
+  if (page === 'portaria') {
+    var urlGitHubPortaria = "https://SEU-USUARIO.github.io/SEU-REPOSITORIO/portaria.html"; 
+    
+    return HtmlService.createHtmlOutput(
+      "<script>window.top.location.href='" + urlGitHubPortaria + "';</script>"
+    );
+  }
+  
+  if (page === 'gerente') {
+    return HtmlService.createTemplateFromFile('GerenteVeiculo').evaluate()
+        .setTitle('Painel Gerente')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+  
+  // Padrão: Tela de cadastro de visitantes
+  return HtmlService.createTemplateFromFile('FormularioVeiculo').evaluate()
+      .setTitle('Cadastro de Veículo')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
