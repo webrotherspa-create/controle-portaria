@@ -94,6 +94,28 @@
       cursor: pointer;
       color: white;
     }
+    .teste-manual {
+      margin-top: 20px;
+      padding: 15px;
+      background: #1f2937;
+      border-radius: 12px;
+      text-align: left;
+    }
+    .teste-manual input {
+      width: 100%;
+      padding: 8px;
+      border-radius: 6px;
+      border: none;
+      margin: 8px 0;
+    }
+    .teste-manual button {
+      background: #4a5568;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: white;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -123,10 +145,18 @@
     <button id="btnLiberar">✅ LIBERAR VEÍCULO E OCUPANTES</button>
   </div>
   <button id="reiniciarCameraBtn" style="display: none;">🔄 Reiniciar câmera</button>
+
+  <!-- Área de teste manual -->
+  <div class="teste-manual">
+    <strong>🧪 Teste manual (digite o ID do QR Code):</strong>
+    <input type="text" id="manualId" placeholder="Ex: veiculo123" value="">
+    <button id="testarManualBtn">Consultar este ID</button>
+    <div class="small-note" style="margin-top: 6px;">Use para verificar se o Apps Script está recebendo o ID corretamente.</div>
+  </div>
 </div>
 
 <script>
-  // URL do seu Google Apps Script já atualizada
+  // URL do Google Apps Script
   const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbykEAtB23F9HDA3P48xcEEnyklpZTniSJPuREcSMEEcz2rLYfZ94Y0Fzrzu8bftVssE/exec";
   
   let html5QrcodeScanner = null;
@@ -196,13 +226,24 @@
   }
 
   function onScanSuccess(decodedText) {
+    console.log("🔍 QR Code lido (raw):", decodedText);
     if (decodedText && decodedText !== ultimoIdLido) {
       ultimoIdLido = decodedText;
       processarLeitura(decodedText);
+    } else if (!decodedText) {
+      exibirAlerta("⚠️ QR Code vazio. Tente novamente.", "alerta");
     }
   }
 
-  function processarLeitura(id) {
+  // Função principal que chama o Apps Script
+  async function processarLeitura(id) {
+    if (!id || id.trim() === "") {
+      exibirAlerta("❌ ID do QR Code está vazio. Verifique o código lido.", "bloqueado");
+      liberarScanner();
+      return;
+    }
+
+    // Pausa o scanner enquanto processa
     if (html5QrcodeScanner && html5QrcodeScanner.isScanning) html5QrcodeScanner.pause(true);
     if (navigator.vibrate) navigator.vibrate(200);
 
@@ -210,22 +251,27 @@
     document.getElementById("dadosVeiculo").style.display = "none";
     document.getElementById("avisoEspecial").style.display = "none";
 
-    fetch(GOOGLE_WEB_APP_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ acao: "consultar", idVeiculo: id })
-    })
-    .then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    })
-    .then(res => {
+    // Log do que está sendo enviado
+    console.log("📤 Enviando para o servidor: acao=consultar, idVeiculo=" + id);
+
+    try {
+      const response = await fetch(GOOGLE_WEB_APP_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ acao: "consultar", idVeiculo: id })
+      });
+      
+      const res = await response.json();
+      console.log("📥 Resposta do servidor (consulta):", res);
+
       if (!res.sucesso) {
-        exibirAlerta(res.msg || "❌ QR Code inválido", "bloqueado");
+        // Exibe a mensagem exata que o servidor retornou (ex: "ID não informado")
+        exibirAlerta(`❌ ${res.msg || "Erro desconhecido"}`, "bloqueado");
         liberarScanner();
         return;
       }
 
+      // Exibe os dados do veículo
       document.getElementById("dPlaca").innerText = res.placa || "---";
       document.getElementById("dMotorista").innerText = res.motorista || "---";
       const passageirosHtml = (res.passageiros || "Nenhum").replace(/;/g, "<br>");
@@ -251,22 +297,25 @@
       btn.disabled = false;
       btn.innerText = "✅ LIBERAR VEÍCULO E OCUPANTES";
 
+      // Substitui o evento anterior para evitar múltiplos acionamentos
       btn.onclick = async () => {
         btn.disabled = true;
         btn.innerText = "⏳ PROCESSANDO...";
         try {
-          const response = await fetch(GOOGLE_WEB_APP_URL, {
+          const responseLibera = await fetch(GOOGLE_WEB_APP_URL, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({ acao: "liberar", idVeiculo: id, responsavel: "Portaria - Scanner" })
           });
-          const retorno = await response.json();
+          const retorno = await responseLibera.json();
+          console.log("📥 Resposta do servidor (liberação):", retorno);
           if (retorno.sucesso) {
             exibirAlerta("✓ ACESSO LIBERADO PARA TODOS OS OCUPANTES", "liberado");
           } else {
             exibirAlerta(retorno.msg || "Erro ao liberar", "bloqueado");
           }
         } catch (e) {
+          console.error("Erro na liberação:", e);
           exibirAlerta("Erro de conexão com o servidor", "bloqueado");
         }
         setTimeout(() => {
@@ -275,12 +324,11 @@
           liberarScanner();
         }, 3000);
       };
-    })
-    .catch(err => {
-      console.error(err);
+    } catch (err) {
+      console.error("Erro na consulta:", err);
       exibirAlerta("Erro de comunicação com o servidor. Verifique a URL do Web App.", "bloqueado");
       liberarScanner();
-    });
+    }
   }
 
   function exibirAlerta(msg, tipo) {
@@ -299,6 +347,16 @@
       ultimoIdLido = "";
     }, 4000);
   }
+
+  // Botão de teste manual
+  document.getElementById("testarManualBtn").addEventListener("click", () => {
+    const manualId = document.getElementById("manualId").value.trim();
+    if (!manualId) {
+      alert("Digite um ID para testar.");
+      return;
+    }
+    processarLeitura(manualId);
+  });
 
   document.getElementById("reiniciarCameraBtn").addEventListener("click", () => {
     reiniciarCamera();
