@@ -146,13 +146,13 @@
   </div>
   <button id="reiniciarCameraBtn" style="display: none;">🔄 Reiniciar câmera</button>
 
-  <!-- Área de teste manual -->
-  <div class="teste-manual">
-    <strong>🧪 Teste manual (digite o ID do QR Code):</strong>
-    <input type="text" id="manualId" placeholder="Ex: veiculo123" value="">
-    <button id="testarManualBtn">Consultar este ID</button>
-    <div class="small-note" style="margin-top: 6px;">Use para verificar se o Apps Script está recebendo o ID corretamente.</div>
-  </div>
+ <!-- Área de consulta manual por PLACA -->
+<div class="teste-manual">
+  <strong>🔍 Consulta por PLACA (manual):</strong>
+  <input type="text" id="placaBusca" placeholder="Ex: ABC1234 ou ABC-1234" value="" style="text-transform: uppercase;">
+  <button id="btnBuscarPlaca">🔎 Buscar veículo</button>
+  <div class="small-note">Digite a placa com ou sem traço. Ex: ABC-1234 ou ABC1234</div>
+</div>
 </div>
 
 <script>
@@ -350,7 +350,7 @@
 
   // Botão de teste manual
   document.getElementById("testarManualBtn").addEventListener("click", () => {
-    const manualId = document.getElementById("manualId").value.trim();
+    const manualId = document.getElementById().value.trim();
     if (!manualId) {
       alert("Digite um ID para testar.");
       return;
