@@ -148,7 +148,7 @@
   </div>
   <button id="reiniciarCameraBtn" style="display: none;">🔄 Reiniciar câmera</button>
 
-  <!-- Área de consulta manual por PLACA (substitui o antigo ID manual) -->
+  <!-- Área de consulta manual por PLACA -->
   <div class="teste-manual">
     <strong>🔍 Consulta por PLACA (manual):</strong>
     <input type="text" id="placaBusca" placeholder="Ex: ABC1234 ou ABC-1234" value="">
@@ -166,7 +166,6 @@
   let scanning = false;
   const qrConfig = { fps: 5, qrbox: { width: 250, height: 250 } };
 
-  // ========== FUNÇÕES DE LOGIN E CÂMERA ==========
   function verificarSenha() {
     const senha = document.getElementById("inputSenha").value;
     if (senha === "ciaan1955") {
@@ -234,7 +233,6 @@
     }
   }
 
-  // ========== LEITURA QR CODE ==========
   function onScanSuccess(decodedText) {
     console.log("🔍 QR Code lido (raw):", decodedText);
     if (decodedText && decodedText !== ultimoIdLido) {
@@ -247,12 +245,11 @@
 
   async function processarLeitura(id) {
     if (!id || id.trim() === "") {
-      exibirAlerta("❌ ID do QR Code está vazio. Verifique o código lido.", "bloqueado");
+      exibirAlerta("❌ ID do QR Code está vazio.", "bloqueado");
       liberarScanner();
       return;
     }
 
-    // Pausa o scanner apenas se estiver escaneando
     if (scanning && html5QrcodeScanner) {
       try {
         await html5QrcodeScanner.pause(true);
@@ -275,13 +272,11 @@
       });
       const res = await response.json();
       console.log("📥 Resposta (consulta por ID):", res);
-
       if (!res.sucesso) {
         exibirAlerta(`❌ ${res.msg || "Erro desconhecido"}`, "bloqueado");
         liberarScanner();
         return;
       }
-
       preencherDadosVeiculo(res, id);
     } catch (err) {
       console.error("Erro na consulta:", err);
@@ -290,7 +285,6 @@
     }
   }
 
-  // ========== CONSULTA POR PLACA (MANUAL) ==========
   function normalizarPlaca(placa) {
     return placa.toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
@@ -306,12 +300,11 @@
       exibirAlerta("❌ Placa inválida. Deve ter 6 ou 7 caracteres alfanuméricos.", "bloqueado");
       return;
     }
-    // Chama a função de busca por placa independentemente do scanner
     processarPorPlaca(placaNormalizada);
   });
 
   async function processarPorPlaca(placa) {
-    // Pausa o scanner se estiver ativo (evita conflitos visuais)
+    // Pausa o scanner se estiver ativo
     if (scanning && html5QrcodeScanner) {
       try {
         await html5QrcodeScanner.pause(true);
@@ -325,6 +318,7 @@
     document.getElementById("dadosVeiculo").style.display = "none";
     document.getElementById("avisoEspecial").style.display = "none";
 
+    console.log("📤 Enviando consulta por placa:", placa);
     try {
       const response = await fetch(GOOGLE_WEB_APP_URL, {
         method: "POST",
@@ -333,13 +327,11 @@
       });
       const res = await response.json();
       console.log("📥 Resposta (consulta por placa):", res);
-
       if (!res.sucesso) {
         exibirAlerta(`❌ ${res.msg || "Placa não encontrada"}`, "bloqueado");
         liberarScanner();
         return;
       }
-
       const idVeiculo = res.idVeiculo;
       if (!idVeiculo) {
         exibirAlerta("❌ ID do veículo não retornado pelo servidor.", "bloqueado");
@@ -354,7 +346,6 @@
     }
   }
 
-  // ========== FUNÇÃO COMUM PARA EXIBIR DADOS E PERMITIR LIBERAÇÃO ==========
   function preencherDadosVeiculo(dados, idVeiculo) {
     document.getElementById("dPlaca").innerText = dados.placa || "---";
     document.getElementById("dMotorista").innerText = dados.motorista || "---";
@@ -394,7 +385,7 @@
         });
         const retorno = await responseLibera.json();
         if (retorno.sucesso) {
-          exibirAlerta("✓ ACESSO LIBERADO PARA TODOS OS OCUPANTES", "liberado");
+          exibirAlerta("✓ ACESSO LIBERADO", "liberado");
         } else {
           exibirAlerta(retorno.msg || "Erro ao liberar", "bloqueado");
         }
@@ -410,7 +401,6 @@
     };
   }
 
-  // ========== UTILITÁRIOS ==========
   function exibirAlerta(msg, tipo) {
     const box = document.getElementById("boxAlerta");
     box.innerHTML = msg;
@@ -421,17 +411,16 @@
   function liberarScanner() {
     setTimeout(() => {
       document.getElementById("boxAlerta").style.display = "none";
-      // Retoma o scanner se não estiver ativo e a câmera existir
+      // Tenta retomar o scanner apenas se ele existir e não estiver escaneando
       if (html5QrcodeScanner && !scanning) {
-        html5QrcodeScanner.resume().then(() => {
-          scanning = true;
-        }).catch(e => console.warn("Erro ao retomar scanner:", e));
+        html5QrcodeScanner.resume()
+          .then(() => { scanning = true; })
+          .catch(e => console.warn("Erro ao retomar scanner:", e));
       }
       ultimoIdLido = "";
     }, 4000);
   }
 
-  // Evento do botão reiniciar câmera
   document.getElementById("reiniciarCameraBtn").addEventListener("click", () => {
     reiniciarCamera();
     exibirAlerta("🔄 Reiniciando câmera...", "alerta");
