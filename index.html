@@ -107,6 +107,7 @@
       border-radius: 6px;
       border: none;
       margin: 8px 0;
+      text-transform: uppercase;
     }
     .teste-manual button {
       background: #4a5568;
@@ -116,6 +117,7 @@
       color: white;
       cursor: pointer;
     }
+    .teste-manual button:hover { background: #2d3748; }
   </style>
 </head>
 <body>
@@ -146,13 +148,13 @@
   </div>
   <button id="reiniciarCameraBtn" style="display: none;">🔄 Reiniciar câmera</button>
 
- <!-- Área de consulta manual por PLACA -->
-<div class="teste-manual">
-  <strong>🔍 Consulta por PLACA (manual):</strong>
-  <input type="text" id="placaBusca" placeholder="Ex: ABC1234 ou ABC-1234" value="" style="text-transform: uppercase;">
-  <button id="btnBuscarPlaca">🔎 Buscar veículo</button>
-  <div class="small-note">Digite a placa com ou sem traço. Ex: ABC-1234 ou ABC1234</div>
-</div>
+  <!-- Área de consulta manual por PLACA (substitui o antigo ID manual) -->
+  <div class="teste-manual">
+    <strong>🔍 Consulta por PLACA (manual):</strong>
+    <input type="text" id="placaBusca" placeholder="Ex: ABC1234 ou ABC-1234" value="">
+    <button id="btnBuscarPlaca">🔎 Buscar veículo</button>
+    <div class="small-note">Digite a placa com ou sem traço, letras maiúsculas ou minúsculas.</div>
+  </div>
 </div>
 
 <script>
@@ -163,6 +165,7 @@
   let ultimoIdLido = "";
   const qrConfig = { fps: 5, qrbox: { width: 250, height: 250 } };
 
+  // ========== FUNÇÕES DE LOGIN E CÂMERA ==========
   function verificarSenha() {
     const senha = document.getElementById("inputSenha").value;
     if (senha === "ciaan1955") {
@@ -225,6 +228,7 @@
     }
   }
 
+  // ========== LEITURA QR CODE ==========
   function onScanSuccess(decodedText) {
     console.log("🔍 QR Code lido (raw):", decodedText);
     if (decodedText && decodedText !== ultimoIdLido) {
@@ -235,7 +239,6 @@
     }
   }
 
-  // Função principal que chama o Apps Script
   async function processarLeitura(id) {
     if (!id || id.trim() === "") {
       exibirAlerta("❌ ID do QR Code está vazio. Verifique o código lido.", "bloqueado");
@@ -243,7 +246,6 @@
       return;
     }
 
-    // Pausa o scanner enquanto processa
     if (html5QrcodeScanner && html5QrcodeScanner.isScanning) html5QrcodeScanner.pause(true);
     if (navigator.vibrate) navigator.vibrate(200);
 
@@ -251,86 +253,137 @@
     document.getElementById("dadosVeiculo").style.display = "none";
     document.getElementById("avisoEspecial").style.display = "none";
 
-    // Log do que está sendo enviado
-    console.log("📤 Enviando para o servidor: acao=consultar, idVeiculo=" + id);
-
     try {
       const response = await fetch(GOOGLE_WEB_APP_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ acao: "consultar", idVeiculo: id })
       });
-      
       const res = await response.json();
-      console.log("📥 Resposta do servidor (consulta):", res);
+      console.log("📥 Resposta (consulta por ID):", res);
 
       if (!res.sucesso) {
-        // Exibe a mensagem exata que o servidor retornou (ex: "ID não informado")
         exibirAlerta(`❌ ${res.msg || "Erro desconhecido"}`, "bloqueado");
         liberarScanner();
         return;
       }
 
-      // Exibe os dados do veículo
-      document.getElementById("dPlaca").innerText = res.placa || "---";
-      document.getElementById("dMotorista").innerText = res.motorista || "---";
-      const passageirosHtml = (res.passageiros || "Nenhum").replace(/;/g, "<br>");
-      document.getElementById("dPassageiros").innerHTML = passageirosHtml;
-      document.getElementById("dTotal").innerText = res.totalOcupantes || "1";
-      document.getElementById("dAluno").innerText = res.aluno || "---";
-      document.getElementById("dadosVeiculo").style.display = "block";
-
-      if (res.necessidadeEspecial === "SIM") {
-        document.getElementById("avisoEspecial").style.display = "block";
-      }
-
-      const btn = document.getElementById("btnLiberar");
-      if (res.status !== "NÃO ENTROU") {
-        exibirAlerta("⚠️ Este veículo já registrou entrada!", "bloqueado");
-        btn.style.display = "none";
-        liberarScanner();
-        return;
-      }
-
-      exibirAlerta("✓ Veículo apto para entrada", "liberado");
-      btn.style.display = "block";
-      btn.disabled = false;
-      btn.innerText = "✅ LIBERAR VEÍCULO E OCUPANTES";
-
-      // Substitui o evento anterior para evitar múltiplos acionamentos
-      btn.onclick = async () => {
-        btn.disabled = true;
-        btn.innerText = "⏳ PROCESSANDO...";
-        try {
-          const responseLibera = await fetch(GOOGLE_WEB_APP_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ acao: "liberar", idVeiculo: id, responsavel: "Portaria - Scanner" })
-          });
-          const retorno = await responseLibera.json();
-          console.log("📥 Resposta do servidor (liberação):", retorno);
-          if (retorno.sucesso) {
-            exibirAlerta("✓ ACESSO LIBERADO PARA TODOS OS OCUPANTES", "liberado");
-          } else {
-            exibirAlerta(retorno.msg || "Erro ao liberar", "bloqueado");
-          }
-        } catch (e) {
-          console.error("Erro na liberação:", e);
-          exibirAlerta("Erro de conexão com o servidor", "bloqueado");
-        }
-        setTimeout(() => {
-          document.getElementById("dadosVeiculo").style.display = "none";
-          document.getElementById("avisoEspecial").style.display = "none";
-          liberarScanner();
-        }, 3000);
-      };
+      preencherDadosVeiculo(res, id);
     } catch (err) {
       console.error("Erro na consulta:", err);
-      exibirAlerta("Erro de comunicação com o servidor. Verifique a URL do Web App.", "bloqueado");
+      exibirAlerta("Erro de comunicação com o servidor.", "bloqueado");
       liberarScanner();
     }
   }
 
+  // ========== CONSULTA POR PLACA (MANUAL) ==========
+  function normalizarPlaca(placa) {
+    return placa.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  document.getElementById("btnBuscarPlaca").addEventListener("click", () => {
+    const placaDigitada = document.getElementById("placaBusca").value.trim();
+    if (!placaDigitada) {
+      exibirAlerta("❌ Digite uma placa para buscar.", "bloqueado");
+      return;
+    }
+    const placaNormalizada = normalizarPlaca(placaDigitada);
+    if (placaNormalizada.length < 6 || placaNormalizada.length > 7) {
+      exibirAlerta("❌ Placa inválida. Deve ter 6 ou 7 caracteres alfanuméricos.", "bloqueado");
+      return;
+    }
+    processarPorPlaca(placaNormalizada);
+  });
+
+  async function processarPorPlaca(placa) {
+    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) html5QrcodeScanner.pause(true);
+
+    document.getElementById("boxAlerta").style.display = "none";
+    document.getElementById("dadosVeiculo").style.display = "none";
+    document.getElementById("avisoEspecial").style.display = "none";
+
+    try {
+      const response = await fetch(GOOGLE_WEB_APP_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ acao: "consultarPorPlaca", placa: placa })
+      });
+      const res = await response.json();
+      console.log("📥 Resposta (consulta por placa):", res);
+
+      if (!res.sucesso) {
+        exibirAlerta(`❌ ${res.msg || "Placa não encontrada"}`, "bloqueado");
+        liberarScanner();
+        return;
+      }
+
+      // A resposta deve conter o idVeiculo para liberação
+      preencherDadosVeiculo(res, res.idVeiculo);
+    } catch (err) {
+      console.error("Erro na consulta por placa:", err);
+      exibirAlerta("Erro de comunicação com o servidor.", "bloqueado");
+      liberarScanner();
+    }
+  }
+
+  // ========== FUNÇÃO COMUM PARA EXIBIR DADOS E PERMITIR LIBERAÇÃO ==========
+  function preencherDadosVeiculo(dados, idVeiculo) {
+    document.getElementById("dPlaca").innerText = dados.placa || "---";
+    document.getElementById("dMotorista").innerText = dados.motorista || "---";
+    const passageirosHtml = (dados.passageiros || "Nenhum").replace(/;/g, "<br>");
+    document.getElementById("dPassageiros").innerHTML = passageirosHtml;
+    document.getElementById("dTotal").innerText = dados.totalOcupantes || "1";
+    document.getElementById("dAluno").innerText = dados.aluno || "---";
+    document.getElementById("dadosVeiculo").style.display = "block";
+
+    if (dados.necessidadeEspecial === "SIM") {
+      document.getElementById("avisoEspecial").style.display = "block";
+    } else {
+      document.getElementById("avisoEspecial").style.display = "none";
+    }
+
+    const btn = document.getElementById("btnLiberar");
+    if (dados.status !== "NÃO ENTROU") {
+      exibirAlerta("⚠️ Este veículo já registrou entrada!", "bloqueado");
+      btn.style.display = "none";
+      liberarScanner();
+      return;
+    }
+
+    exibirAlerta("✓ Veículo apto para entrada", "liberado");
+    btn.style.display = "block";
+    btn.disabled = false;
+    btn.innerText = "✅ LIBERAR VEÍCULO E OCUPANTES";
+
+    // Substitui o evento do botão para liberar com o ID correto
+    btn.onclick = async () => {
+      btn.disabled = true;
+      btn.innerText = "⏳ PROCESSANDO...";
+      try {
+        const responseLibera = await fetch(GOOGLE_WEB_APP_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ acao: "liberar", idVeiculo: idVeiculo, responsavel: "Portaria" })
+        });
+        const retorno = await responseLibera.json();
+        if (retorno.sucesso) {
+          exibirAlerta("✓ ACESSO LIBERADO PARA TODOS OS OCUPANTES", "liberado");
+        } else {
+          exibirAlerta(retorno.msg || "Erro ao liberar", "bloqueado");
+        }
+      } catch (e) {
+        console.error("Erro na liberação:", e);
+        exibirAlerta("Erro de conexão com o servidor", "bloqueado");
+      }
+      setTimeout(() => {
+        document.getElementById("dadosVeiculo").style.display = "none";
+        document.getElementById("avisoEspecial").style.display = "none";
+        liberarScanner();
+      }, 3000);
+    };
+  }
+
+  // ========== UTILITÁRIOS ==========
   function exibirAlerta(msg, tipo) {
     const box = document.getElementById("boxAlerta");
     box.innerHTML = msg;
@@ -348,16 +401,7 @@
     }, 4000);
   }
 
-  // Botão de teste manual
-  document.getElementById("testarManualBtn").addEventListener("click", () => {
-    const manualId = document.getElementById().value.trim();
-    if (!manualId) {
-      alert("Digite um ID para testar.");
-      return;
-    }
-    processarLeitura(manualId);
-  });
-
+  // Evento do botão reiniciar câmera
   document.getElementById("reiniciarCameraBtn").addEventListener("click", () => {
     reiniciarCamera();
     exibirAlerta("🔄 Reiniciando câmera...", "alerta");
