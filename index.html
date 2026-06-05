@@ -163,6 +163,7 @@
   
   let html5QrcodeScanner = null;
   let ultimoIdLido = "";
+  let scanning = false;
   const qrConfig = { fps: 5, qrbox: { width: 250, height: 250 } };
 
   // ========== FUNÇÕES DE LOGIN E CÂMERA ==========
@@ -184,7 +185,7 @@
       return;
     }
     
-    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) return;
+    if (html5QrcodeScanner && scanning) return;
 
     const preview = document.getElementById("preview");
     if (!preview) return;
@@ -196,6 +197,7 @@
       qrConfig,
       onScanSuccess
     ).then(() => {
+      scanning = true;
       console.log("✅ Câmera ativa");
       exibirAlerta("📷 Câmera ativa. Aponte para o QR Code.", "liberado");
       setTimeout(() => {
@@ -211,6 +213,7 @@
           return html5QrcodeScanner.start(cameraId, qrConfig, onScanSuccess);
         } else throw new Error("Nenhuma câmera");
       }).then(() => {
+        scanning = true;
         exibirAlerta("📷 Câmera ativa (modo alternativo)", "liberado");
         document.getElementById("reiniciarCameraBtn").style.display = "inline-block";
       }).catch(fbErr => {
@@ -221,8 +224,11 @@
   }
 
   function reiniciarCamera() {
-    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
-      html5QrcodeScanner.stop().then(() => iniciarCamera()).catch(() => iniciarCamera());
+    if (html5QrcodeScanner && scanning) {
+      html5QrcodeScanner.stop().then(() => {
+        scanning = false;
+        iniciarCamera();
+      }).catch(() => iniciarCamera());
     } else {
       iniciarCamera();
     }
@@ -246,7 +252,15 @@
       return;
     }
 
-    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) html5QrcodeScanner.pause(true);
+    // Pausa o scanner apenas se estiver escaneando
+    if (scanning && html5QrcodeScanner) {
+      try {
+        await html5QrcodeScanner.pause(true);
+        scanning = false;
+      } catch (e) {
+        console.warn("Erro ao pausar scanner:", e);
+      }
+    }
     if (navigator.vibrate) navigator.vibrate(200);
 
     document.getElementById("boxAlerta").style.display = "none";
@@ -292,11 +306,20 @@
       exibirAlerta("❌ Placa inválida. Deve ter 6 ou 7 caracteres alfanuméricos.", "bloqueado");
       return;
     }
+    // Chama a função de busca por placa independentemente do scanner
     processarPorPlaca(placaNormalizada);
   });
 
   async function processarPorPlaca(placa) {
-    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) html5QrcodeScanner.pause(true);
+    // Pausa o scanner se estiver ativo (evita conflitos visuais)
+    if (scanning && html5QrcodeScanner) {
+      try {
+        await html5QrcodeScanner.pause(true);
+        scanning = false;
+      } catch (e) {
+        console.warn("Não foi possível pausar o scanner:", e);
+      }
+    }
 
     document.getElementById("boxAlerta").style.display = "none";
     document.getElementById("dadosVeiculo").style.display = "none";
@@ -317,8 +340,13 @@
         return;
       }
 
-      // A resposta deve conter o idVeiculo para liberação
-      preencherDadosVeiculo(res, res.idVeiculo);
+      const idVeiculo = res.idVeiculo;
+      if (!idVeiculo) {
+        exibirAlerta("❌ ID do veículo não retornado pelo servidor.", "bloqueado");
+        liberarScanner();
+        return;
+      }
+      preencherDadosVeiculo(res, idVeiculo);
     } catch (err) {
       console.error("Erro na consulta por placa:", err);
       exibirAlerta("Erro de comunicação com o servidor.", "bloqueado");
@@ -355,7 +383,6 @@
     btn.disabled = false;
     btn.innerText = "✅ LIBERAR VEÍCULO E OCUPANTES";
 
-    // Substitui o evento do botão para liberar com o ID correto
     btn.onclick = async () => {
       btn.disabled = true;
       btn.innerText = "⏳ PROCESSANDO...";
@@ -394,8 +421,11 @@
   function liberarScanner() {
     setTimeout(() => {
       document.getElementById("boxAlerta").style.display = "none";
-      if (html5QrcodeScanner && !html5QrcodeScanner.isScanning) {
-        html5QrcodeScanner.resume();
+      // Retoma o scanner se não estiver ativo e a câmera existir
+      if (html5QrcodeScanner && !scanning) {
+        html5QrcodeScanner.resume().then(() => {
+          scanning = true;
+        }).catch(e => console.warn("Erro ao retomar scanner:", e));
       }
       ultimoIdLido = "";
     }, 4000);
